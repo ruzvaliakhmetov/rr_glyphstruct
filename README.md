@@ -1,4 +1,4 @@
-# rr_glyphstruct
+# RR GlyphStruct
 
 **RR GlyphStruct** is a Glyphs 3 setup for building glyphs from reusable structural components.
 The repository contains a specially prepared Glyphs file with ready-made `.part` components, plus a small helper plugin that makes it easier to insert those components while drawing.
