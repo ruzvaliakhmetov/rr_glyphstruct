@@ -11,6 +11,7 @@ from GlyphsApp.plugins import SelectTool
 from AppKit import (
     NSAffineTransform,
     NSBackingStoreBuffered,
+    NSBezierPath,
     NSBezelStyleRegularSquare,
     NSButton,
     NSButtonTypeMomentaryChange,
@@ -562,12 +563,13 @@ class PartBrush(SelectTool):
             button.setButtonType_(NSButtonTypeMomentaryChange)
             button.setBezelStyle_(NSBezelStyleRegularSquare)
             button.setImagePosition_(NSImageOnly)
-            button.setImage_(self.imageForPart(name, max(18, cellSize - 14)))
+            selected = name == self.selectedPartName
+            button.setImage_(self.imageForPart(name, max(18, cellSize - 14), selected))
             button.setTarget_(self)
             button.setAction_("selectPart:")
             button.setTag_(index)
             button.setToolTip_(name)
-            if name == self.selectedPartName:
+            if selected:
                 button.setState_(NSOnState)
             else:
                 button.setState_(NSOffState)
@@ -585,18 +587,50 @@ class PartBrush(SelectTool):
     @objc.python_method
     def updateButtonStates(self):
         for index, button in enumerate(self.buttons):
-            if index < len(self.partNames) and self.partNames[index] == self.selectedPartName:
+            if index >= len(self.partNames):
+                continue
+            name = self.partNames[index]
+            selected = name == self.selectedPartName
+            if selected:
                 button.setState_(NSOnState)
             else:
                 button.setState_(NSOffState)
+            try:
+                frame = button.frame()
+                imageSize = int(max(18, min(frame.size.width, frame.size.height) - 14))
+                button.setImage_(self.imageForPart(name, imageSize, selected))
+                button.setToolTip_(("Selected: " if selected else "") + name)
+                button.setNeedsDisplay_(True)
+            except Exception:
+                pass
 
     @objc.python_method
-    def imageForPart(self, glyphName, size):
+    def selectionColor(self, alpha=1.0):
+        try:
+            color = NSColor.controlAccentColor()
+        except Exception:
+            try:
+                color = NSColor.selectedControlColor()
+            except Exception:
+                color = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.0, 0.45, 1.0, 1.0)
+        try:
+            return color.colorWithAlphaComponent_(alpha)
+        except Exception:
+            return color
+
+    @objc.python_method
+    def imageForPart(self, glyphName, size, selected=False):
         image = NSImage.alloc().initWithSize_(NSMakeSize(size, size))
         image.lockFocus()
         try:
             NSColor.clearColor().setFill()
             NSRectFill(NSMakeRect(0, 0, size, size))
+
+            if selected:
+                highlightRect = NSMakeRect(1.5, 1.5, max(0, size - 3.0), max(0, size - 3.0))
+                highlightPath = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(highlightRect, 7.0, 7.0)
+                self.selectionColor(0.16).setFill()
+                highlightPath.fill()
 
             font = Glyphs.font
             if font is None:
@@ -638,7 +672,17 @@ class PartBrush(SelectTool):
                 p.transformUsingAffineTransform_(transform)
                 p.setLineWidth_(max(1.0, 1.2 / scale))
                 p.stroke()
+
         finally:
+            if selected:
+                try:
+                    borderRect = NSMakeRect(1.5, 1.5, max(0, size - 3.0), max(0, size - 3.0))
+                    borderPath = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(borderRect, 7.0, 7.0)
+                    borderPath.setLineWidth_(2.5)
+                    self.selectionColor(0.95).setStroke()
+                    borderPath.stroke()
+                except Exception:
+                    pass
             image.unlockFocus()
         return image
 
