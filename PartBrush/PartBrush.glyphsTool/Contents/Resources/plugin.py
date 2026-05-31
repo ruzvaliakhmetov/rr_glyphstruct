@@ -87,11 +87,13 @@ class PartBrush(SelectTool):
         self.statusText = None
         self.partNames = []
         self.selectedPartName = None
+        self.previewReferenceSize = None
         self.rawLocation = None
         self.lastLocation = None
         self.lastLayer = None
         self.lastGridSignature = None
         self.buttons = []
+        self.toolActive = False
 
     @objc.python_method
     def start(self):
@@ -105,9 +107,11 @@ class PartBrush(SelectTool):
     @objc.python_method
     def activate(self):
         try:
+            self.toolActive = True
             if self.window is None:
                 self.buildWindow()
             self.updateGrid(force=True)
+            self.updateButtonStates()
             # Keep the palette visible without taking keyboard/mouse focus away
             # from the Glyphs edit view. If the palette becomes key, the first
             # canvas click after choosing a part may be consumed just to return
@@ -122,9 +126,14 @@ class PartBrush(SelectTool):
 
     @objc.python_method
     def deactivate(self):
+        self.toolActive = False
         self.rawLocation = None
         self.lastLocation = None
         self.lastLayer = None
+        try:
+            self.updateButtonStates()
+        except Exception:
+            pass
         try:
             NSCursor.arrowCursor().set()
         except Exception:
@@ -477,6 +486,7 @@ class PartBrush(SelectTool):
         if font is None:
             self.partNames = []
             self.selectedPartName = None
+            self.previewReferenceSize = None
             self.lastGridSignature = None
             self.setStatus("No font open")
             self.populateGrid([])
@@ -552,6 +562,7 @@ class PartBrush(SelectTool):
 
         self.gridView = PartBrushFlippedGridView.alloc().initWithFrame_(NSMakeRect(0, 0, contentWidth, contentHeight))
         self.buttons = []
+        self.previewReferenceSize = self.previewReferenceSizeForPartNames(partNames)
 
         for index, name in enumerate(partNames):
             col = index % columns
@@ -606,6 +617,13 @@ class PartBrush(SelectTool):
 
     @objc.python_method
     def selectionColor(self, alpha=1.0):
+        if not getattr(self, "toolActive", False):
+            color = NSColor.colorWithCalibratedWhite_alpha_(0.54, 1.0)
+            try:
+                return color.colorWithAlphaComponent_(alpha)
+            except Exception:
+                return color
+
         try:
             color = NSColor.controlAccentColor()
         except Exception:
@@ -617,6 +635,39 @@ class PartBrush(SelectTool):
             return color.colorWithAlphaComponent_(alpha)
         except Exception:
             return color
+
+    @objc.python_method
+    def previewReferenceSizeForPartNames(self, partNames):
+        """Return the largest preview width/height used as the palette scale reference."""
+        font = Glyphs.font
+        if font is None:
+            return None
+
+        maxWidth = 0.0
+        maxHeight = 0.0
+        for name in partNames:
+            try:
+                glyph = font.glyphs[name]
+                if glyph is None:
+                    continue
+                layer = self.previewLayerForGlyph(glyph, font)
+                if layer is None:
+                    continue
+                closedPath = self.layerPath(layer, ["completeBezierPath", "drawBezierPath", "bezierPath"])
+                openPath = self.layerPath(layer, ["completeOpenBezierPath", "drawOpenBezierPath", "openBezierPath"])
+                bounds = self.unionBoundsForPaths([closedPath, openPath])
+                if bounds is None:
+                    continue
+                if bounds.size.width > maxWidth:
+                    maxWidth = bounds.size.width
+                if bounds.size.height > maxHeight:
+                    maxHeight = bounds.size.height
+            except Exception:
+                pass
+
+        if maxWidth <= 0 or maxHeight <= 0:
+            return None
+        return NSMakeSize(maxWidth, maxHeight)
 
     @objc.python_method
     def imageForPart(self, glyphName, size, selected=False):
@@ -651,7 +702,17 @@ class PartBrush(SelectTool):
 
             margin = 6.0
             available = size - margin * 2.0
-            scale = min(available / bounds.size.width, available / bounds.size.height)
+
+            # Use one shared scale for the whole palette instead of fitting every
+            # part independently. This keeps similarly shaped parts visually
+            # comparable: the largest part fills the thumbnail area, and smaller
+            # parts stay smaller relative to it.
+            referenceSize = self.previewReferenceSize
+            if referenceSize is not None and referenceSize.width > 0 and referenceSize.height > 0:
+                scale = min(available / referenceSize.width, available / referenceSize.height)
+            else:
+                scale = min(available / bounds.size.width, available / bounds.size.height)
+
             dx = margin + (available - bounds.size.width * scale) / 2.0
             dy = margin + (available - bounds.size.height * scale) / 2.0
 
