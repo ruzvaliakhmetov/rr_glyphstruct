@@ -13,9 +13,9 @@
 	<key>CFBundleName</key>
 	<string>Part Inserter</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.4</string>
+	<string>0.4.2</string>
 	<key>CFBundleVersion</key>
-	<string>4</string>
+	<string>6</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright 2026 Ruz Valiakhmetov</string>
 	<key>NSPrincipalClass</key>

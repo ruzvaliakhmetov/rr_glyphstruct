@@ -15,6 +15,7 @@ from GlyphsApp.plugins import GeneralPlugin
 
 from AppKit import (
     NSAffineTransform,
+    NSApp,
     NSBackingStoreBuffered,
     NSBezelStyleRegularSquare,
     NSButton,
@@ -50,10 +51,25 @@ try:
 except Exception:
     NSEdgeInsetsMake = None
 
+try:
+    from AppKit import NSFloatingWindowLevel
+except Exception:
+    NSFloatingWindowLevel = 3
 
-class FlippedGridView(NSView):
+
+class PartInserterFlippedGridView(NSView):
     def isFlipped(self):
         return True
+
+
+class PartInserterPreviewButton(NSButton):
+    """Palette button that should not steal focus from the Glyphs edit view."""
+
+    def acceptsFirstResponder(self):
+        return False
+
+    def needsPanelToBecomeKey(self):
+        return False
 
 
 class PartInserter(GeneralPlugin):
@@ -75,6 +91,7 @@ class PartInserter(GeneralPlugin):
         self.statusBar = None
         self.statusText = None
         self.partNames = []
+        self.previewReferenceSize = None
         self.lastGridSignature = None
 
     @objc.python_method
@@ -100,13 +117,20 @@ class PartInserter(GeneralPlugin):
             if self.window is None:
                 self.buildWindow()
             self.updateGrid(force=True)
-            self.window.makeKeyAndOrderFront_(self)
+            # Show the palette without making it the active/key window, so the
+            # next canvas action still goes straight to the Glyphs edit view.
+            try:
+                self.window.orderFrontRegardless()
+            except Exception:
+                self.window.orderFront_(self)
+            self.refocusEditView()
         except Exception:
             print(traceback.format_exc())
             Glyphs.showMacroWindow()
 
     def refresh_(self, sender):
         self.updateGrid(force=True)
+        self.refocusEditView()
 
     def insertPart_(self, sender):
         try:
@@ -136,6 +160,8 @@ class PartInserter(GeneralPlugin):
                 Glyphs.redraw()
             finally:
                 glyph.endUndo()
+
+            self.refocusEditView()
         except Exception:
             print(traceback.format_exc())
             Glyphs.showMacroWindow()
@@ -155,7 +181,21 @@ class PartInserter(GeneralPlugin):
         )
         self.window.setTitle_("Parts")
         self.window.setFloatingPanel_(True)
-        self.window.setHidesOnDeactivate_(False)
+        # Hide the floating palette when the user switches away from Glyphs.
+        self.window.setHidesOnDeactivate_(True)
+        try:
+            self.window.setLevel_(NSFloatingWindowLevel)
+        except Exception:
+            pass
+        try:
+            # Let controls work without making the palette the key window.
+            self.window.setBecomesKeyOnlyIfNeeded_(True)
+        except Exception:
+            pass
+        try:
+            self.window.setWorksWhenModal_(True)
+        except Exception:
+            pass
         self.window.setFrameAutosaveName_(self.windowAutosaveName)
         self.window.setMinSize_(NSMakeSize(260, 170))
         self.window.setDelegate_(self)
@@ -191,7 +231,7 @@ class PartInserter(GeneralPlugin):
         self.statusBar.setAutoresizesSubviews_(True)
         content.addSubview_(self.statusBar)
 
-        refreshButton = NSButton.alloc().initWithFrame_(NSMakeRect(12, 5, 76, 24))
+        refreshButton = PartInserterPreviewButton.alloc().initWithFrame_(NSMakeRect(12, 5, 76, 24))
         refreshButton.setTitle_("Refresh")
         refreshButton.setTarget_(self)
         refreshButton.setAction_("refresh:")
@@ -249,6 +289,7 @@ class PartInserter(GeneralPlugin):
         font = Glyphs.font
         if font is None:
             self.partNames = []
+            self.previewReferenceSize = None
             self.lastGridSignature = None
             self.setStatus("No font open")
             self.populateGrid([])
@@ -312,7 +353,8 @@ class PartInserter(GeneralPlugin):
         contentHeight = leftPadding * 2 + rows * cellSize + max(0, rows - 1) * self.cellGap
         contentHeight = max(contentHeight, visibleHeight)
 
-        self.gridView = FlippedGridView.alloc().initWithFrame_(NSMakeRect(0, 0, contentWidth, contentHeight))
+        self.gridView = PartInserterFlippedGridView.alloc().initWithFrame_(NSMakeRect(0, 0, contentWidth, contentHeight))
+        self.previewReferenceSize = self.previewReferenceSizeForPartNames(partNames)
 
         for index, name in enumerate(partNames):
             col = index % columns
@@ -320,7 +362,7 @@ class PartInserter(GeneralPlugin):
             x = leftPadding + col * (cellSize + self.cellGap)
             y = leftPadding + row * (cellSize + self.cellGap)
 
-            button = NSButton.alloc().initWithFrame_(NSMakeRect(x, y, cellSize, cellSize))
+            button = PartInserterPreviewButton.alloc().initWithFrame_(NSMakeRect(x, y, cellSize, cellSize))
             button.setButtonType_(NSButtonTypeMomentaryChange)
             button.setBezelStyle_(NSBezelStyleRegularSquare)
             button.setImagePosition_(NSImageOnly)
@@ -337,6 +379,91 @@ class PartInserter(GeneralPlugin):
             self.scrollView.reflectScrolledClipView_(self.scrollView.contentView())
         except Exception:
             pass
+
+    @objc.python_method
+    def refocusEditView(self):
+        """Return keyboard/mouse focus to the active Glyphs edit view after palette actions."""
+        try:
+            document = Glyphs.currentDocument
+            if callable(document):
+                document = document()
+            if document is None:
+                return
+
+            windowController = document.windowController()
+            if windowController is None:
+                return
+
+            window = windowController.window()
+            graphicView = None
+
+            # GeneralPlugin does not always have self.editViewController(), so ask
+            # the document window controller for the active edit view controller.
+            for selector in ("activeEditViewController", "editViewController"):
+                try:
+                    editViewControllerMethod = getattr(windowController, selector)
+                    editViewController = editViewControllerMethod()
+                    if editViewController is not None:
+                        graphicView = editViewController.graphicView()
+                        if graphicView is not None:
+                            break
+                except Exception:
+                    pass
+
+            try:
+                NSApp.activateIgnoringOtherApps_(True)
+            except Exception:
+                pass
+
+            if window is not None:
+                try:
+                    window.makeKeyWindow()
+                except Exception:
+                    pass
+                try:
+                    window.makeMainWindow()
+                except Exception:
+                    pass
+                if graphicView is not None:
+                    try:
+                        window.makeFirstResponder_(graphicView)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    @objc.python_method
+    def previewReferenceSizeForPartNames(self, partNames):
+        """Return the largest preview width/height used as the palette scale reference."""
+        font = Glyphs.font
+        if font is None:
+            return None
+
+        maxWidth = 0.0
+        maxHeight = 0.0
+        for name in partNames:
+            try:
+                glyph = font.glyphs[name]
+                if glyph is None:
+                    continue
+                layer = self.previewLayerForGlyph(glyph, font)
+                if layer is None:
+                    continue
+                closedPath = self.layerPath(layer, ["completeBezierPath", "drawBezierPath", "bezierPath"])
+                openPath = self.layerPath(layer, ["completeOpenBezierPath", "drawOpenBezierPath", "openBezierPath"])
+                bounds = self.unionBoundsForPaths([closedPath, openPath])
+                if bounds is None:
+                    continue
+                if bounds.size.width > maxWidth:
+                    maxWidth = bounds.size.width
+                if bounds.size.height > maxHeight:
+                    maxHeight = bounds.size.height
+            except Exception:
+                pass
+
+        if maxWidth <= 0 or maxHeight <= 0:
+            return None
+        return NSMakeSize(maxWidth, maxHeight)
 
     @objc.python_method
     def imageForPart(self, glyphName, size):
@@ -365,7 +492,17 @@ class PartInserter(GeneralPlugin):
 
             margin = 6.0
             available = size - margin * 2.0
-            scale = min(available / bounds.size.width, available / bounds.size.height)
+
+            # Use one shared scale for the whole palette instead of fitting every
+            # part independently. This keeps differently sized parts comparable:
+            # the largest part fills the thumbnail area, and smaller parts remain
+            # smaller relative to it.
+            referenceSize = self.previewReferenceSize
+            if referenceSize is not None and referenceSize.width > 0 and referenceSize.height > 0:
+                scale = min(available / referenceSize.width, available / referenceSize.height)
+            else:
+                scale = min(available / bounds.size.width, available / bounds.size.height)
+
             dx = margin + (available - bounds.size.width * scale) / 2.0
             dy = margin + (available - bounds.size.height * scale) / 2.0
 
