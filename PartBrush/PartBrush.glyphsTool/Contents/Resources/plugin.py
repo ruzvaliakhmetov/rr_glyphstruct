@@ -47,6 +47,28 @@ try:
     from AppKit import NSFloatingWindowLevel
 except Exception:
     NSFloatingWindowLevel = 3
+
+try:
+    from AppKit import NSEventModifierFlagOption
+except Exception:
+    # AppKit's Option/Alt key bit. Older PyObjC builds may only expose NSAlternateKeyMask.
+    NSEventModifierFlagOption = 1 << 19
+
+try:
+    from AppKit import NSAlternateKeyMask
+except Exception:
+    NSAlternateKeyMask = NSEventModifierFlagOption
+
+try:
+    from AppKit import NSEventModifierFlagCommand
+except Exception:
+    # AppKit's Command key bit. Older PyObjC builds may only expose NSCommandKeyMask.
+    NSEventModifierFlagCommand = 1 << 20
+
+try:
+    from AppKit import NSCommandKeyMask
+except Exception:
+    NSCommandKeyMask = NSEventModifierFlagCommand
 from Foundation import NSMakePoint, NSMakeRect, NSMakeSize
 
 try:
@@ -63,7 +85,7 @@ class PartBrushFlippedGridView(NSView):
 class PartBrush(SelectTool):
     """Tool for placing _part.* / .part components by clicking in Edit View."""
 
-    windowAutosaveName = "com.sur88.PartBrush.partsPalette.window"
+    windowAutosaveName = "com.PartBrush.partsPalette.window"
     partPrefixes = ("_part.", ".part")
     cellSize = 72
     cellGap = 8
@@ -73,9 +95,10 @@ class PartBrush(SelectTool):
     @objc.python_method
     def settings(self):
         self.name = Glyphs.localize({"en": "Part Brush"})
-        icon_path = os.path.join(os.path.dirname(self.__file__()), "toolbarIconTemplate.pdf")
+        resources_path = os.path.dirname(self.__file__())
+        icon_path = os.path.join(resources_path, "toolbarIconTemplate.pdf")
         icon = NSImage.alloc().initByReferencingFile_(icon_path)
-        self._icon = None
+        self._icon = icon
         self.tool_bar_image = icon
 
         self.partBrushCursor = self.makePartBrushCursor()
@@ -94,6 +117,9 @@ class PartBrush(SelectTool):
         self.lastGridSignature = None
         self.buttons = []
         self.toolActive = False
+        self.optionKeyDown = False
+        self.commandKeyDown = False
+        self.temporarySelectMode = False
 
     @objc.python_method
     def start(self):
@@ -130,6 +156,9 @@ class PartBrush(SelectTool):
         self.rawLocation = None
         self.lastLocation = None
         self.lastLayer = None
+        self.optionKeyDown = False
+        self.commandKeyDown = False
+        self.temporarySelectMode = False
         try:
             self.updateButtonStates()
         except Exception:
@@ -153,6 +182,8 @@ class PartBrush(SelectTool):
 
     def standardCursor(self):
         """Glyphs asks tool plugins for their cursor through this method."""
+        if self.isSelectModifierDown() or getattr(self, "temporarySelectMode", False):
+            return self.selectionToolCursor()
         if self.partBrushCursor is not None:
             return self.partBrushCursor
         try:
@@ -166,28 +197,171 @@ class PartBrush(SelectTool):
         return self.standardCursor()
 
     @objc.python_method
-    def forcePartBrushCursor(self):
+    def selectionToolCursor(self):
+        """Use the inherited Select Tool cursor while Option/Alt or Command is held."""
+        try:
+            cursor = super(PartBrush, self).standardCursor()
+            if cursor is not None:
+                return cursor
+        except Exception:
+            pass
+        try:
+            cursor = SelectTool.standardCursor(self)
+            if cursor is not None:
+                return cursor
+        except Exception:
+            pass
+        try:
+            return NSCursor.arrowCursor()
+        except Exception:
+            return None
+
+    @objc.python_method
+    def isOptionKeyPressed(self, theEvent):
+        try:
+            flags = int(theEvent.modifierFlags())
+        except Exception:
+            return False
+        try:
+            optionMask = int(NSEventModifierFlagOption) | int(NSAlternateKeyMask)
+        except Exception:
+            optionMask = 1 << 19
+        return bool(flags & optionMask)
+
+    @objc.python_method
+    def isCommandKeyPressed(self, theEvent):
+        try:
+            flags = int(theEvent.modifierFlags())
+        except Exception:
+            return False
+        try:
+            commandMask = int(NSEventModifierFlagCommand) | int(NSCommandKeyMask)
+        except Exception:
+            commandMask = 1 << 20
+        return bool(flags & commandMask)
+
+    @objc.python_method
+    def isSelectModifierDown(self):
+        return bool(getattr(self, "optionKeyDown", False) or getattr(self, "commandKeyDown", False))
+
+    @objc.python_method
+    def clearPreviewLocation(self):
+        self.rawLocation = None
+        self.lastLocation = None
+        self.lastLayer = None
+
+    @objc.python_method
+    def updateModifierState(self, theEvent):
+        self.optionKeyDown = self.isOptionKeyPressed(theEvent)
+        self.commandKeyDown = self.isCommandKeyPressed(theEvent)
+        return self.isSelectModifierDown()
+
+    @objc.python_method
+    def forcePartBrushCursor(self, theEvent=None):
         # Some Glyphs/PyObjC combinations do not refresh the cursor rects
         # immediately for Python tools. Setting the cursor during activation
         # and mouse events makes the active Part Brush state visible.
         try:
+            if theEvent is not None:
+                self.updateModifierState(theEvent)
             cursor = self.standardCursor()
             if cursor is not None:
                 cursor.set()
         except Exception:
             pass
 
+    @objc.python_method
+    def forwardEventToSelectTool(self, selectorName, theEvent):
+        """Temporarily hand mouse handling back to Glyphs' built-in SelectTool behavior."""
+        try:
+            selector = getattr(super(PartBrush, self), selectorName)
+            return selector(theEvent)
+        except AttributeError:
+            pass
+        except Exception:
+            print(traceback.format_exc())
+            Glyphs.showMacroWindow()
+            return None
+
+        try:
+            selector = getattr(SelectTool, selectorName)
+        except Exception:
+            selector = None
+        if selector is not None:
+            try:
+                return selector(self, theEvent)
+            except Exception:
+                print(traceback.format_exc())
+                Glyphs.showMacroWindow()
+                return None
+        return None
+
+    def flagsChanged_(self, theEvent):
+        try:
+            wasSelectModifierDown = self.isSelectModifierDown()
+            self.updateModifierState(theEvent)
+            self.forcePartBrushCursor()
+            isSelectModifierDown = self.isSelectModifierDown()
+            if wasSelectModifierDown != isSelectModifierDown:
+                if isSelectModifierDown:
+                    self.clearPreviewLocation()
+                Glyphs.redraw()
+        except Exception:
+            print(traceback.format_exc())
+            Glyphs.showMacroWindow()
+
     def mouseMoved_(self, theEvent):
+        selectModifierDown = self.updateModifierState(theEvent)
         self.forcePartBrushCursor()
+        if selectModifierDown:
+            self.clearPreviewLocation()
+            Glyphs.redraw()
+            return self.forwardEventToSelectTool("mouseMoved_", theEvent)
         self.updateMouseLocation(theEvent)
 
     def mouseDragged_(self, theEvent):
+        selectModifierDown = self.updateModifierState(theEvent)
         self.forcePartBrushCursor()
+        if self.temporarySelectMode:
+            self.clearPreviewLocation()
+            return self.forwardEventToSelectTool("mouseDragged_", theEvent)
+        if selectModifierDown:
+            self.clearPreviewLocation()
+            Glyphs.redraw()
+            return
         self.updateMouseLocation(theEvent)
+
+    def mouseUp_(self, theEvent):
+        try:
+            selectModifierDown = self.updateModifierState(theEvent)
+            self.forcePartBrushCursor()
+            if self.temporarySelectMode:
+                try:
+                    return self.forwardEventToSelectTool("mouseUp_", theEvent)
+                finally:
+                    self.temporarySelectMode = False
+                    if not self.isSelectModifierDown():
+                        self.updateMouseLocation(theEvent)
+                    Glyphs.redraw()
+            if selectModifierDown:
+                self.clearPreviewLocation()
+                Glyphs.redraw()
+        except Exception:
+            print(traceback.format_exc())
+            Glyphs.showMacroWindow()
 
     def mouseDown_(self, theEvent):
         try:
+            selectModifierDown = self.updateModifierState(theEvent)
             self.forcePartBrushCursor()
+
+            if selectModifierDown:
+                self.temporarySelectMode = True
+                self.clearPreviewLocation()
+                Glyphs.redraw()
+                return self.forwardEventToSelectTool("mouseDown_", theEvent)
+
+            self.temporarySelectMode = False
             self.updateMouseLocation(theEvent)
 
             if self.selectedPartName is None:
@@ -308,6 +482,8 @@ class PartBrush(SelectTool):
     def foreground(self, layer):
         """Draw a translucent preview of the selected part at the cursor position."""
         try:
+            if self.isSelectModifierDown() or getattr(self, "temporarySelectMode", False):
+                return
             if self.selectedPartName is None or self.lastLocation is None:
                 return
             if self.lastLayer is not None and layer is not self.lastLayer:
@@ -366,7 +542,8 @@ class PartBrush(SelectTool):
         )
         self.window.setTitle_("Parts Palette")
         self.window.setFloatingPanel_(True)
-        self.window.setHidesOnDeactivate_(False)
+        # Hide the floating palette when the user switches away from Glyphs.
+        self.window.setHidesOnDeactivate_(True)
         try:
             self.window.setLevel_(NSFloatingWindowLevel)
         except Exception:
@@ -504,7 +681,10 @@ class PartBrush(SelectTool):
                 pass
 
         partNames = sorted([g.name for g in font.glyphs if self.isPartName(g.name)])
-        signature = (font.familyName, masterId, width, height, tuple(partNames), self.selectedPartName)
+        # Selection changes should not rebuild the palette: rebuilding replaces
+        # the scroll view document view and can make the palette jump to the top
+        # after the user inserts a part. Only data/layout changes belong here.
+        signature = (font.familyName, masterId, width, height, tuple(partNames))
         if not force and signature == self.lastGridSignature:
             return
 
@@ -538,7 +718,9 @@ class PartBrush(SelectTool):
         if self.scrollView is None:
             return
 
-        clipBounds = self.scrollView.contentView().bounds()
+        clipView = self.scrollView.contentView()
+        clipBounds = clipView.bounds()
+        previousOrigin = clipBounds.origin
         contentWidth = int(clipBounds.size.width)
         if contentWidth <= 0:
             contentWidth = 420
@@ -589,8 +771,10 @@ class PartBrush(SelectTool):
 
         self.scrollView.setDocumentView_(self.gridView)
         try:
-            self.scrollView.contentView().scrollToPoint_(NSMakePoint(0, 0))
-            self.scrollView.reflectScrolledClipView_(self.scrollView.contentView())
+            maxY = max(0, contentHeight - visibleHeight)
+            restoreY = min(max(0, previousOrigin.y), maxY)
+            clipView.scrollToPoint_(NSMakePoint(0, restoreY))
+            self.scrollView.reflectScrolledClipView_(clipView)
         except Exception:
             pass
         self.updateButtonStates()
