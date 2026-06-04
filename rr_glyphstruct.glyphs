@@ -1,5 +1,9 @@
 {
 .appVersion = "3436";
+DisplayStrings = (
+"/newGlyph",
+a
+);
 date = "2024-09-27 13:13:17 +0000";
 disablesAutomaticAlignment = 1;
 familyName = "RR GlyphStruct";
@@ -12,17 +16,11 @@ name = Languagesystems;
 );
 fontMaster = (
 {
-alignmentZones = (
-"{1000, 10}",
-"{800, 10}",
-"{600, 10}",
-"{0, -10}"
-);
-ascender = 1000;
-capHeight = 800;
+ascender = 700;
+capHeight = 600;
 descender = -200;
 id = "E77A9F44-C317-449E-877C-5FBA2A1B1F0B";
-xHeight = 600;
+xHeight = 500;
 }
 );
 glyphs = (
@@ -314,83 +312,9 @@ unicode = 005A;
 },
 {
 glyphname = a;
-lastChange = "2026-05-31 21:02:47 +0000";
+lastChange = "2026-06-04 09:13:10 +0000";
 layers = (
 {
-components = (
-{
-name = _part.segment04;
-transform = "{1, 0, 0, 1, 0, 500}";
-},
-{
-name = _part.segment04;
-transform = "{1, 0, 0, 1, 0, 100}";
-},
-{
-name = _part.segment04;
-transform = "{1, 0, 0, 1, 100, 0}";
-},
-{
-name = _part.segment04;
-transform = "{1, 0, 0, 1, 400, 0}";
-},
-{
-name = _part.segment02;
-transform = "{1, 0, 0, 1, 200, 500}";
-},
-{
-name = _part.segment02;
-transform = "{1, 0, 0, 1, 300, 400}";
-},
-{
-name = _part.segment02;
-transform = "{1, 0, 0, 1, 200, 300}";
-},
-{
-name = _part.segment01;
-transform = "{1, 0, 0, 1, 100, 300}";
-},
-{
-name = _part.segment01;
-transform = "{1, 0, 0, 1, 0, 200}";
-},
-{
-name = _part.segment03;
-transform = "{1, 0, 0, 1, 200, 0}";
-},
-{
-name = _part.square01;
-transform = "{1, 0, 0, 1, 100, 500}";
-},
-{
-name = _part.square01;
-transform = "{1, 0, 0, 1, 300, 300}";
-},
-{
-name = _part.square01;
-transform = "{1, 0, 0, 1, 300, 200}";
-},
-{
-name = _part.square01;
-transform = "{1, 0, 0, 1, 300, 100}";
-},
-{
-name = _part.round_corner_inner01;
-transform = "{1, 0, 0, 1, 100, 200}";
-},
-{
-name = _part.round_corner_inner04;
-transform = "{1, 0, 0, 1, 100, 50}";
-},
-{
-name = _part.round_corner_inner04;
-transform = "{1, 0, 0, 1, 400, 50}";
-},
-{
-name = _part.round_corner_inner02;
-transform = "{1, 0, 0, 1, 250, 200}";
-}
-);
 layerId = "E77A9F44-C317-449E-877C-5FBA2A1B1F0B";
 width = 500;
 }
@@ -1565,6 +1489,422 @@ nodes = (
 }
 );
 width = 100;
+}
+);
+},
+{
+glyphname = newGlyph;
+lastChange = "2026-06-04 10:35:08 +0000";
+layers = (
+{
+components = (
+{
+name = _part.segment01;
+transform = "{1, 0, 0, 1, 100, 300}";
+},
+{
+name = _part.segment01;
+transform = "{1, 0, 0, 1, 200, 400}";
+},
+{
+name = _part.segment04;
+transform = "{1, 0, 0, 1, 100, 200}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 200, 200}";
+},
+{
+name = _part.segment02;
+transform = "{1, 0, 0, 1, 300, 400}";
+},
+{
+name = _part.segment02;
+transform = "{1, 0, 0, 1, 400, 300}";
+},
+{
+name = _part.segment03;
+transform = "{1, 0, 0, 1, 400, 200}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 300, 200}";
+},
+{
+name = _part.segment01;
+transform = "{1, 0, 0, 1, 100, 100}";
+},
+{
+name = _part.segment04;
+transform = "{1, 0, 0, 1, 100, 0}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 200, 0}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 300, 0}";
+},
+{
+name = _part.segment02;
+transform = "{1, 0, 0, 1, 400, 0}";
+},
+{
+name = _part.cap03;
+transform = "{1, 0, 0, 1, 400, -50}";
+},
+{
+name = _part.round_corner_inner04;
+transform = "{1, 0, 0, 1, 200, 50}";
+},
+{
+name = _part.round_corner_inner04;
+transform = "{1, 0, 0, 1, 200, 250}";
+},
+{
+name = _part.round_corner_inner01;
+transform = "{1, 0, 0, 1, 200, 300}";
+},
+{
+name = _part.round_corner_inner01;
+transform = "{1, 0, 0, 1, 200, 100}";
+},
+{
+name = _part.round_corner_inner02;
+transform = "{1, 0, 0, 1, 350, 300}";
+},
+{
+name = _part.round_corner_inner03;
+transform = "{1, 0, 0, 1, 350, 250}";
+},
+{
+name = _part.segment01;
+transform = "{1, 0, 0, 1, 400, 400}";
+},
+{
+name = _part.cap02;
+transform = "{1, 0, 0, 1, 500, 400}";
+},
+{
+name = _part.segment01;
+transform = "{1, 0, 0, 1, 2400, 400}";
+},
+{
+name = _part.segment01;
+transform = "{1, 0, 0, 1, 2300, 300}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 2500, 400}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 2400, 200}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 2500, 200}";
+},
+{
+name = _part.segment02;
+transform = "{1, 0, 0, 1, 2600, 200}";
+},
+{
+name = _part.segment03;
+transform = "{1, 0, 0, 1, 2600, 100}";
+},
+{
+name = _part.segment03;
+transform = "{1, 0, 0, 1, 2500, 0}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 2400, 0}";
+},
+{
+name = _part.square04;
+transform = "{1, 0, 0, 1, 2350, 0}";
+},
+{
+name = _part.segment04;
+transform = "{1, 0, 0, 1, 2300, 200}";
+},
+{
+name = _part.round_corner_inner02;
+transform = "{1, 0, 0, 1, 2550, 100}";
+},
+{
+name = _part.round_corner_inner03;
+transform = "{1, 0, 0, 1, 2550, 50}";
+},
+{
+name = _part.round_corner_inner04;
+transform = "{1, 0, 0, 1, 2400, 250}";
+},
+{
+name = _part.round_corner_inner01;
+transform = "{1, 0, 0, 1, 2400, 300}";
+},
+{
+name = _part.cap04;
+transform = "{1, 0, 0, 1, 2300, 0}";
+},
+{
+name = _part.cap02;
+transform = "{1, 0, 0, 1, 2600, 400}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 600, 500}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 600, 400}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 600, 300}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 600, 200}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 600, 100}";
+},
+{
+name = _part.segment04;
+transform = "{1, 0, 0, 1, 600, 0}";
+},
+{
+name = _part.cap02;
+transform = "{1, 0, 0, 1, 700, 0}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 800, 300}";
+},
+{
+name = _part.segment04;
+transform = "{1, 0, 0, 1, 900, 0}";
+},
+{
+name = _part.segment03;
+transform = "{1, 0, 0, 1, 1000, 0}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1100, 150}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1100, 250}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1100, 350}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1100, 50}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1100, -50}";
+},
+{
+name = _part.cap01;
+transform = "{1, 0, 0, 1, 1100, 450}";
+},
+{
+name = _part.round_corner_inner04;
+transform = "{1, 0, 0, 1, 900, 50}";
+},
+{
+name = _part.round_corner_inner03;
+transform = "{1, 0, 0, 1, 1050, 50}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1300, 350}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1300, 250}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1300, 150}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1300, 50}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1300, -50}";
+},
+{
+name = _part.segment04;
+transform = "{1, 0, 0, 1, 1400, 0}";
+},
+{
+name = _part.segment01;
+transform = "{1, 0, 0, 1, 1400, 400}";
+},
+{
+name = _part.segment02;
+transform = "{1, 0, 0, 1, 1500, 400}";
+},
+{
+name = _part.segment03;
+transform = "{1, 0, 0, 1, 1500, 0}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1600, 200}";
+},
+{
+name = _part.cap01;
+transform = "{1, 0, 0, 1, 1300, 450}";
+},
+{
+name = _part.cap03;
+transform = "{1, 0, 0, 1, 1300, -200}";
+},
+{
+name = _part.cap03;
+transform = "{1, 0, 0, 1, 1100, -200}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 800, 200}";
+},
+{
+name = _part.segment02;
+transform = "{1, 0, 0, 1, 1600, 300}";
+},
+{
+name = _part.segment03;
+transform = "{1, 0, 0, 1, 1600, 100}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1800, 250}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1800, 150}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1800, 50}";
+},
+{
+name = _part.segment01;
+transform = "{1, 0, 0, 1, 1900, 400}";
+},
+{
+name = _part.segment02;
+transform = "{1, 0, 0, 1, 2000, 400}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 2100, 200}";
+},
+{
+name = _part.cap03;
+transform = "{1, 0, 0, 1, 1800, 0}";
+},
+{
+name = _part.segment02;
+transform = "{1, 0, 0, 1, 2100, 300}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 2100, 100}";
+},
+{
+name = _part.segment04;
+transform = "{1, 0, 0, 1, 2100, 0}";
+},
+{
+name = _part.segment04;
+transform = "{1, 0, 0, 1, 800, 100}";
+},
+{
+name = _part.segment02;
+transform = "{1, 0, 0, 1, 800, 400}";
+},
+{
+name = _part.cap04;
+transform = "{1, 0, 0, 1, 750, 400}";
+},
+{
+name = _part.round_corner_inner01;
+transform = "{1, 0, 0, 1, 1400, 300}";
+},
+{
+name = _part.round_corner_inner02;
+transform = "{1, 0, 0, 1, 1550, 300}";
+},
+{
+name = _part.round_corner_inner03;
+transform = "{1, 0, 0, 1, 1550, 50}";
+},
+{
+name = _part.round_corner_inner04;
+transform = "{1, 0, 0, 1, 1400, 50}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1800, 350}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1800, 450}";
+},
+{
+name = _part.cap02;
+transform = "{1, 0, 0, 1, 2200, 0}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1100, -150}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1300, -150}";
+},
+{
+name = _part.segment02;
+transform = "{1, 0, 0, 1, 600, 600}";
+},
+{
+name = _part.cap04;
+transform = "{1, 0, 0, 1, 550, 600}";
+},
+{
+name = _part.square01;
+transform = "{1, 0, 0, 1, 1800, 550}";
+},
+{
+name = _part.cap01;
+transform = "{1, 0, 0, 1, 1800, 650}";
+},
+{
+name = _part.round_corner_inner02;
+transform = "{1, 0, 0, 1, 2050, 300}";
+},
+{
+name = _part.round_corner_inner01;
+transform = "{1, 0, 0, 1, 1900, 300}";
+}
+);
+layerId = "E77A9F44-C317-449E-877C-5FBA2A1B1F0B";
+width = 2800;
 }
 );
 }
