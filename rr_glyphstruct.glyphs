@@ -1,8 +1,7 @@
 {
 .appVersion = "3436";
 DisplayStrings = (
-"/newGlyph",
-a
+"/newGlyph"
 );
 date = "2024-09-27 13:13:17 +0000";
 disablesAutomaticAlignment = 1;
