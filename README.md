@@ -1,6 +1,6 @@
 # RR GlyphStruct
 
-![gs](images/header.png)
+![gs](Images/header.png)
 
 **RR GlyphStruct** is a modular Glyphs 3 file with ready-made ```_part.*``` components and two helper plugins for inserting them while drawing.
 
