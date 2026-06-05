@@ -3,6 +3,7 @@ from __future__ import division, print_function, unicode_literals
 
 import objc
 import os
+import time
 import traceback
 
 from GlyphsApp import Glyphs, GSComponent, DOCUMENTACTIVATED, UPDATEINTERFACE
@@ -92,6 +93,20 @@ class PartBrush(SelectTool):
     padding = 14
     statusBarHeight = 34
 
+    # Glyphs can instantiate Python tool plugins more than once while documents
+    # are opened/closed. The palette must therefore live on the class, not on a
+    # single tool instance, otherwise every new instance creates another panel.
+    _sharedWindow = None
+    _sharedScrollView = None
+    _sharedGridView = None
+    _sharedStatusBar = None
+    _sharedStatusText = None
+    _sharedRefreshButton = None
+    _sharedButtons = []
+    _activePaletteOwner = None
+    _callbacksRegistered = False
+    _callbackOwner = None
+
     @objc.python_method
     def settings(self):
         self.name = Glyphs.localize({"en": "Part Brush"})
@@ -108,6 +123,7 @@ class PartBrush(SelectTool):
         self.gridView = None
         self.statusBar = None
         self.statusText = None
+        self.refreshButton = None
         self.partNames = []
         self.selectedPartName = None
         self.previewReferenceSize = None
@@ -120,12 +136,30 @@ class PartBrush(SelectTool):
         self.optionKeyDown = False
         self.commandKeyDown = False
         self.temporarySelectMode = False
+        self.paintingMode = False
+        self.paintingLayer = None
+        self.paintingGlyph = None
+        self.paintingPartName = None
+        self.paintingStepSize = None
+        self.paintAnchorPoint = None
+        self.lastPaintCell = None
+        self.paintedCells = set()
+        self.paintingUndoOpen = False
+        self.paintingDidDrag = False
+        self.paintStrokeComponents = []
+        self.lastPassiveGridCheck = 0.0
 
     @objc.python_method
     def start(self):
         try:
-            Glyphs.addCallback(self.updateGridIfNeeded, DOCUMENTACTIVATED)
-            Glyphs.addCallback(self.updateGridIfNeeded, UPDATEINTERFACE)
+            # Glyphs can create several instances of a Python tool while fonts
+            # are opened/closed. Keep global callbacks singleton as well, or
+            # stale instances will keep doing duplicate UPDATEINTERFACE checks.
+            if not PartBrush._callbacksRegistered:
+                Glyphs.addCallback(self.updateGridIfNeeded, DOCUMENTACTIVATED)
+                Glyphs.addCallback(self.updateGridIfNeeded, UPDATEINTERFACE)
+                PartBrush._callbacksRegistered = True
+                PartBrush._callbackOwner = self
         except Exception:
             print(traceback.format_exc())
             Glyphs.showMacroWindow()
@@ -134,8 +168,12 @@ class PartBrush(SelectTool):
     def activate(self):
         try:
             self.toolActive = True
+            PartBrush._activePaletteOwner = self
+            self.adoptSharedPalette()
             if self.window is None:
                 self.buildWindow()
+            else:
+                self.retargetPaletteControls()
             self.updateGrid(force=True)
             self.updateButtonStates()
             # Keep the palette visible without taking keyboard/mouse focus away
@@ -152,6 +190,7 @@ class PartBrush(SelectTool):
 
     @objc.python_method
     def deactivate(self):
+        self.finishPainting()
         self.toolActive = False
         self.rawLocation = None
         self.lastLocation = None
@@ -159,6 +198,9 @@ class PartBrush(SelectTool):
         self.optionKeyDown = False
         self.commandKeyDown = False
         self.temporarySelectMode = False
+        self.resetPaintingState()
+        if PartBrush._activePaletteOwner is self:
+            PartBrush._activePaletteOwner = None
         try:
             self.updateButtonStates()
         except Exception:
@@ -171,6 +213,74 @@ class PartBrush(SelectTool):
             Glyphs.redraw()
         except Exception:
             pass
+
+    @objc.python_method
+    def adoptSharedPalette(self):
+        """Attach this tool instance to the one shared Parts Palette, if it exists."""
+        self.window = PartBrush._sharedWindow
+        self.scrollView = PartBrush._sharedScrollView
+        self.gridView = PartBrush._sharedGridView
+        self.statusBar = PartBrush._sharedStatusBar
+        self.statusText = PartBrush._sharedStatusText
+        self.refreshButton = PartBrush._sharedRefreshButton
+        try:
+            self.buttons = list(PartBrush._sharedButtons or [])
+        except Exception:
+            self.buttons = []
+        self.retargetPaletteControls()
+
+    @objc.python_method
+    def storeSharedPalette(self):
+        """Remember the current palette controls so later tool instances reuse them."""
+        PartBrush._sharedWindow = self.window
+        PartBrush._sharedScrollView = self.scrollView
+        PartBrush._sharedGridView = self.gridView
+        PartBrush._sharedStatusBar = self.statusBar
+        PartBrush._sharedStatusText = self.statusText
+        PartBrush._sharedRefreshButton = self.refreshButton
+        try:
+            PartBrush._sharedButtons = list(self.buttons or [])
+        except Exception:
+            PartBrush._sharedButtons = []
+
+    @objc.python_method
+    def clearSharedPalette(self):
+        """Forget the shared palette after the user closes the panel."""
+        if PartBrush._sharedWindow is self.window:
+            PartBrush._sharedWindow = None
+            PartBrush._sharedScrollView = None
+            PartBrush._sharedGridView = None
+            PartBrush._sharedStatusBar = None
+            PartBrush._sharedStatusText = None
+            PartBrush._sharedRefreshButton = None
+            PartBrush._sharedButtons = []
+        self.window = None
+        self.scrollView = None
+        self.gridView = None
+        self.statusBar = None
+        self.statusText = None
+        self.refreshButton = None
+        self.buttons = []
+        self.lastGridSignature = None
+
+    @objc.python_method
+    def retargetPaletteControls(self):
+        """Make the shared window delegate/buttons point at the current tool instance."""
+        try:
+            if self.window is not None:
+                self.window.setDelegate_(self)
+        except Exception:
+            pass
+        try:
+            if self.refreshButton is not None:
+                self.refreshButton.setTarget_(self)
+        except Exception:
+            pass
+        for button in getattr(self, "buttons", []) or []:
+            try:
+                button.setTarget_(self)
+            except Exception:
+                pass
 
     @objc.python_method
     def makePartBrushCursor(self):
@@ -198,19 +308,11 @@ class PartBrush(SelectTool):
 
     @objc.python_method
     def selectionToolCursor(self):
-        """Use the inherited Select Tool cursor while Option/Alt or Command is held."""
-        try:
-            cursor = super(PartBrush, self).standardCursor()
-            if cursor is not None:
-                return cursor
-        except Exception:
-            pass
-        try:
-            cursor = SelectTool.standardCursor(self)
-            if cursor is not None:
-                return cursor
-        except Exception:
-            pass
+        """Fast Selection Tool cursor used while Option/Alt or Command is held."""
+        # Calling SelectTool.standardCursor() on every cursor request can be
+        # surprisingly expensive during drag. The built-in selection cursor is
+        # effectively the arrow for this temporary pass-through mode, so return
+        # it directly and keep the mouse hot path light.
         try:
             return NSCursor.arrowCursor()
         except Exception:
@@ -249,6 +351,273 @@ class PartBrush(SelectTool):
         self.rawLocation = None
         self.lastLocation = None
         self.lastLayer = None
+
+    @objc.python_method
+    def resetPaintingState(self):
+        self.paintingMode = False
+        self.paintingLayer = None
+        self.paintingGlyph = None
+        self.paintingPartName = None
+        self.paintingStepSize = None
+        self.paintAnchorPoint = None
+        self.lastPaintCell = None
+        self.paintedCells = set()
+        self.paintingUndoOpen = False
+        self.paintingDidDrag = False
+        self.paintStrokeComponents = []
+
+    @objc.python_method
+    def finishPainting(self, theEvent=None):
+        """Close a Part Brush drag stroke and restore the normal preview state."""
+        glyph = getattr(self, "paintingGlyph", None)
+        undoOpen = getattr(self, "paintingUndoOpen", False)
+        try:
+            if undoOpen and glyph is not None:
+                try:
+                    glyph.endUndo()
+                except Exception:
+                    pass
+        finally:
+            wasPainting = getattr(self, "paintingMode", False)
+            self.resetPaintingState()
+            if theEvent is not None and wasPainting and not self.isSelectModifierDown():
+                self.updateMouseLocation(theEvent)
+            try:
+                Glyphs.redraw()
+            except Exception:
+                pass
+
+    @objc.python_method
+    def selectedPartStepSize(self):
+        """Return the X/Y repeat step for drag-painting the selected part."""
+        fallback = self.currentGridSpacing()
+        if fallback is None or fallback <= 0:
+            fallback = 1.0
+
+        xStep = fallback
+        yStep = fallback
+        font = Glyphs.font
+        if font is None or self.selectedPartName is None:
+            return NSMakeSize(xStep, yStep)
+
+        try:
+            glyph = font.glyphs[self.selectedPartName]
+        except Exception:
+            glyph = None
+        if glyph is None:
+            return NSMakeSize(xStep, yStep)
+
+        layer = self.previewLayerForGlyph(glyph, font)
+        bounds = None
+        if layer is not None:
+            try:
+                closedPath = self.layerPath(layer, ["completeBezierPath", "drawBezierPath", "bezierPath"])
+                openPath = self.layerPath(layer, ["completeOpenBezierPath", "drawOpenBezierPath", "openBezierPath"])
+                bounds = self.unionBoundsForPaths([closedPath, openPath])
+            except Exception:
+                bounds = None
+
+            try:
+                width = float(getattr(layer, "width"))
+                if width > 0:
+                    xStep = width
+            except Exception:
+                pass
+
+        if bounds is not None:
+            try:
+                width = float(bounds.size.width)
+                if width > 0:
+                    xStep = width
+            except Exception:
+                pass
+            try:
+                height = float(bounds.size.height)
+                if height > 0:
+                    yStep = height
+            except Exception:
+                pass
+
+        # Thin/open parts can have an almost-zero bbox in one direction. In that
+        # case, use the other dimension so a brush stroke does not create a huge
+        # number of overlapping components.
+        if xStep <= 0:
+            xStep = fallback
+        if yStep <= 0:
+            yStep = xStep if xStep > 0 else fallback
+        return NSMakeSize(float(xStep), float(yStep))
+
+    @objc.python_method
+    def startPaintingStroke(self, theEvent):
+        self.updateMouseLocation(theEvent)
+
+        if self.selectedPartName is None:
+            Glyphs.showNotification("Part Brush", "Choose a part in the Parts Palette first.")
+            return
+
+        font = Glyphs.font
+        layer = self.activeLayer()
+        if font is None or layer is None:
+            Glyphs.showNotification("Part Brush", "Open a font and select a glyph layer first.")
+            return
+
+        glyph = layer.parent
+        self.resetPaintingState()
+        self.paintingMode = True
+        self.paintingLayer = layer
+        self.paintingGlyph = glyph
+        self.paintingPartName = self.selectedPartName
+        self.paintingStepSize = self.selectedPartStepSize()
+        self.paintAnchorPoint = self.lastLocation
+        self.lastPaintCell = None
+        self.paintedCells = set()
+        self.paintingUndoOpen = False
+        self.paintingDidDrag = False
+        self.paintStrokeComponents = []
+
+        try:
+            glyph.beginUndo()
+            self.paintingUndoOpen = True
+            layer.clearSelection()
+            self.paintAtEvent(theEvent)
+        except Exception:
+            self.finishPainting()
+            raise
+
+    @objc.python_method
+    def markPaintingAsDrag(self):
+        """Switch the current stroke from single-click insertion to drag-painting."""
+        if getattr(self, "paintingDidDrag", False):
+            return
+        self.paintingDidDrag = True
+
+        # A single click should leave the inserted component selected. Once the
+        # user drags, the stroke becomes brush painting, so remove selection
+        # from the first stamp and from any stamps created during the stroke.
+        try:
+            if self.paintingLayer is not None:
+                self.paintingLayer.clearSelection()
+        except Exception:
+            pass
+        for component in getattr(self, "paintStrokeComponents", []):
+            try:
+                component.selected = False
+            except Exception:
+                pass
+
+    @objc.python_method
+    def paintAtEvent(self, theEvent):
+        if not getattr(self, "paintingMode", False):
+            return
+        try:
+            graphicView = self.editViewController().graphicView()
+            rawLocation = graphicView.getActiveLocation_(theEvent)
+        except Exception:
+            return
+        self.rawLocation = rawLocation
+        try:
+            self.lastLayer = graphicView.activeLayer()
+        except Exception:
+            self.lastLayer = self.paintingLayer
+
+        currentCell = self.paintCellForRawLocation(rawLocation)
+        if currentCell is None:
+            return
+
+        previousCell = self.lastPaintCell
+        if previousCell is None:
+            cells = [currentCell]
+        else:
+            cells = self.paintCellsBetween(previousCell, currentCell)
+
+        for cell in cells:
+            self.paintCell(cell)
+        self.lastPaintCell = currentCell
+        try:
+            Glyphs.redraw()
+        except Exception:
+            pass
+
+    @objc.python_method
+    def paintCellForRawLocation(self, rawLocation):
+        if rawLocation is None:
+            return None
+        anchor = self.paintAnchorPoint
+        step = self.paintingStepSize
+        if anchor is None:
+            anchor = self.snapPointToGrid(rawLocation)
+            self.paintAnchorPoint = anchor
+        if step is None:
+            step = self.selectedPartStepSize()
+            self.paintingStepSize = step
+        try:
+            xStep = float(step.width)
+            yStep = float(step.height)
+            if xStep <= 0 or yStep <= 0:
+                return None
+            x = int(round((float(rawLocation.x) - float(anchor.x)) / xStep))
+            y = int(round((float(rawLocation.y) - float(anchor.y)) / yStep))
+            return (x, y)
+        except Exception:
+            return None
+
+    @objc.python_method
+    def paintCellsBetween(self, startCell, endCell):
+        try:
+            dx = int(endCell[0] - startCell[0])
+            dy = int(endCell[1] - startCell[1])
+            steps = max(abs(dx), abs(dy))
+            if steps <= 0:
+                return [endCell]
+            cells = []
+            for index in range(1, steps + 1):
+                x = int(round(startCell[0] + dx * index / float(steps)))
+                y = int(round(startCell[1] + dy * index / float(steps)))
+                cell = (x, y)
+                if not cells or cells[-1] != cell:
+                    cells.append(cell)
+            return cells
+        except Exception:
+            return [endCell]
+
+    @objc.python_method
+    def pointForPaintCell(self, cell):
+        anchor = self.paintAnchorPoint
+        step = self.paintingStepSize
+        if anchor is None or step is None:
+            return None
+        try:
+            return NSMakePoint(
+                float(anchor.x) + int(cell[0]) * float(step.width),
+                float(anchor.y) + int(cell[1]) * float(step.height),
+            )
+        except Exception:
+            return None
+
+    @objc.python_method
+    def paintCell(self, cell):
+        if cell in self.paintedCells:
+            return
+        point = self.pointForPaintCell(cell)
+        if point is None:
+            return
+        layer = self.paintingLayer
+        partName = self.paintingPartName
+        if layer is None or partName is None:
+            return
+        component = GSComponent(partName)
+        component.position = point
+        layer.shapes.append(component)
+        try:
+            component.selected = not getattr(self, "paintingDidDrag", False)
+        except Exception:
+            pass
+        try:
+            self.paintStrokeComponents.append(component)
+        except Exception:
+            pass
+        self.paintedCells.add(cell)
+        self.lastLocation = point
 
     @objc.python_method
     def updateModifierState(self, theEvent):
@@ -299,50 +668,66 @@ class PartBrush(SelectTool):
     def flagsChanged_(self, theEvent):
         try:
             wasSelectModifierDown = self.isSelectModifierDown()
-            self.updateModifierState(theEvent)
-            self.forcePartBrushCursor()
-            isSelectModifierDown = self.isSelectModifierDown()
+            isSelectModifierDown = self.updateModifierState(theEvent)
+
+            # Cursor/redraw only when the mode actually changes. During normal
+            # Option/Command dragging, the event stream must go straight to
+            # SelectTool without our preview/palette work in between.
             if wasSelectModifierDown != isSelectModifierDown:
                 if isSelectModifierDown:
                     self.clearPreviewLocation()
+                self.forcePartBrushCursor()
                 Glyphs.redraw()
         except Exception:
             print(traceback.format_exc())
             Glyphs.showMacroWindow()
 
     def mouseMoved_(self, theEvent):
+        wasSelectModifierDown = self.isSelectModifierDown()
         selectModifierDown = self.updateModifierState(theEvent)
-        self.forcePartBrushCursor()
         if selectModifierDown:
-            self.clearPreviewLocation()
-            Glyphs.redraw()
+            if not wasSelectModifierDown:
+                self.clearPreviewLocation()
+                self.forcePartBrushCursor()
+                Glyphs.redraw()
             return self.forwardEventToSelectTool("mouseMoved_", theEvent)
         self.updateMouseLocation(theEvent)
 
     def mouseDragged_(self, theEvent):
-        selectModifierDown = self.updateModifierState(theEvent)
-        self.forcePartBrushCursor()
+        # Critical performance path: when Option/Alt or Command started a
+        # temporary SelectTool gesture, do absolutely no Part Brush UI work here.
+        # No cursor reset, no preview clearing, no Glyphs.redraw(), no palette
+        # refresh check — just hand the event to the native SelectTool.
         if self.temporarySelectMode:
-            self.clearPreviewLocation()
             return self.forwardEventToSelectTool("mouseDragged_", theEvent)
+
+        selectModifierDown = self.updateModifierState(theEvent)
+        if getattr(self, "paintingMode", False):
+            self.markPaintingAsDrag()
+            return self.paintAtEvent(theEvent)
         if selectModifierDown:
             self.clearPreviewLocation()
-            Glyphs.redraw()
-            return
+            return self.forwardEventToSelectTool("mouseDragged_", theEvent)
         self.updateMouseLocation(theEvent)
 
     def mouseUp_(self, theEvent):
         try:
-            selectModifierDown = self.updateModifierState(theEvent)
-            self.forcePartBrushCursor()
             if self.temporarySelectMode:
                 try:
                     return self.forwardEventToSelectTool("mouseUp_", theEvent)
                 finally:
                     self.temporarySelectMode = False
-                    if not self.isSelectModifierDown():
+                    selectModifierDown = self.updateModifierState(theEvent)
+                    if selectModifierDown:
+                        self.clearPreviewLocation()
+                    else:
                         self.updateMouseLocation(theEvent)
+                    self.forcePartBrushCursor()
                     Glyphs.redraw()
+
+            selectModifierDown = self.updateModifierState(theEvent)
+            if getattr(self, "paintingMode", False):
+                return self.finishPainting(theEvent)
             if selectModifierDown:
                 self.clearPreviewLocation()
                 Glyphs.redraw()
@@ -353,39 +738,17 @@ class PartBrush(SelectTool):
     def mouseDown_(self, theEvent):
         try:
             selectModifierDown = self.updateModifierState(theEvent)
-            self.forcePartBrushCursor()
 
             if selectModifierDown:
+                self.finishPainting()
                 self.temporarySelectMode = True
                 self.clearPreviewLocation()
-                Glyphs.redraw()
+                self.forcePartBrushCursor()
                 return self.forwardEventToSelectTool("mouseDown_", theEvent)
 
             self.temporarySelectMode = False
-            self.updateMouseLocation(theEvent)
-
-            if self.selectedPartName is None:
-                Glyphs.showNotification("Part Brush", "Choose a part in the Parts Palette first.")
-                return
-
-            font = Glyphs.font
-            layer = self.activeLayer()
-            if font is None or layer is None:
-                Glyphs.showNotification("Part Brush", "Open a font and select a glyph layer first.")
-                return
-
-            glyph = layer.parent
-            glyph.beginUndo()
-            try:
-                component = GSComponent(self.selectedPartName)
-                if self.lastLocation is not None:
-                    component.position = self.lastLocation
-                layer.clearSelection()
-                layer.shapes.append(component)
-                component.selected = True
-                Glyphs.redraw()
-            finally:
-                glyph.endUndo()
+            self.forcePartBrushCursor()
+            self.startPaintingStroke(theEvent)
         except Exception:
             print(traceback.format_exc())
             Glyphs.showMacroWindow()
@@ -482,7 +845,7 @@ class PartBrush(SelectTool):
     def foreground(self, layer):
         """Draw a translucent preview of the selected part at the cursor position."""
         try:
-            if self.isSelectModifierDown() or getattr(self, "temporarySelectMode", False):
+            if self.isSelectModifierDown() or getattr(self, "temporarySelectMode", False) or getattr(self, "paintingMode", False):
                 return
             if self.selectedPartName is None or self.lastLocation is None:
                 return
@@ -589,11 +952,11 @@ class PartBrush(SelectTool):
         self.statusBar.setAutoresizesSubviews_(True)
         content.addSubview_(self.statusBar)
 
-        refreshButton = NSButton.alloc().initWithFrame_(NSMakeRect(12, 5, 76, 24))
-        refreshButton.setTitle_("Refresh")
-        refreshButton.setTarget_(self)
-        refreshButton.setAction_("refresh:")
-        self.statusBar.addSubview_(refreshButton)
+        self.refreshButton = NSButton.alloc().initWithFrame_(NSMakeRect(12, 5, 76, 24))
+        self.refreshButton.setTitle_("Refresh")
+        self.refreshButton.setTarget_(self)
+        self.refreshButton.setAction_("refresh:")
+        self.statusBar.addSubview_(self.refreshButton)
 
         self.statusText = NSTextField.alloc().initWithFrame_(NSMakeRect(98, 8, initialWidth - 110, 18))
         self.statusText.setBezeled_(False)
@@ -611,6 +974,13 @@ class PartBrush(SelectTool):
         self.statusBar.addSubview_(self.statusText)
 
         self.layoutViews()
+        self.storeSharedPalette()
+
+    def windowWillClose_(self, notification):
+        try:
+            self.clearSharedPalette()
+        except Exception:
+            pass
 
     def windowDidResize_(self, notification):
         try:
@@ -622,6 +992,7 @@ class PartBrush(SelectTool):
             Glyphs.showMacroWindow()
 
     def refresh_(self, sender):
+        self.adoptSharedPalette()
         self.updateGrid(force=True)
 
     def selectPart_(self, sender):
@@ -654,11 +1025,38 @@ class PartBrush(SelectTool):
 
     @objc.python_method
     def updateGridIfNeeded(self, sender=None):
+        owner = PartBrush._activePaletteOwner
+        if owner is not None and owner is not self:
+            try:
+                return owner.updateGridIfNeeded(sender)
+            except Exception:
+                pass
+
+        # Never let passive UI callbacks compete with the native SelectTool
+        # gesture. This keeps Option-copy and Command-move feeling immediate.
+        if (
+            getattr(self, "temporarySelectMode", False)
+            or getattr(self, "paintingMode", False)
+            or self.isSelectModifierDown()
+        ):
+            return
+
+        self.adoptSharedPalette()
         if self.window is not None and self.window.isVisible():
+            # UPDATEINTERFACE can fire very often. Manual Refresh and activation
+            # still update immediately, but passive checks are throttled.
+            try:
+                now = time.time()
+                if now - getattr(self, "lastPassiveGridCheck", 0.0) < 0.50:
+                    return
+                self.lastPassiveGridCheck = now
+            except Exception:
+                pass
             self.updateGrid(force=False)
 
     @objc.python_method
     def updateGrid(self, force=False):
+        self.adoptSharedPalette()
         font = Glyphs.font
         if font is None:
             self.partNames = []
@@ -670,6 +1068,10 @@ class PartBrush(SelectTool):
             return
 
         masterId = font.selectedFontMaster.id if font.selectedFontMaster else ""
+        try:
+            fontIdentity = id(font)
+        except Exception:
+            fontIdentity = str(font)
         width = 0
         height = 0
         if self.scrollView is not None:
@@ -684,7 +1086,7 @@ class PartBrush(SelectTool):
         # Selection changes should not rebuild the palette: rebuilding replaces
         # the scroll view document view and can make the palette jump to the top
         # after the user inserts a part. Only data/layout changes belong here.
-        signature = (font.familyName, masterId, width, height, tuple(partNames))
+        signature = (fontIdentity, font.familyName, masterId, width, height, tuple(partNames))
         if not force and signature == self.lastGridSignature:
             return
 
@@ -770,6 +1172,7 @@ class PartBrush(SelectTool):
             self.gridView.addSubview_(button)
 
         self.scrollView.setDocumentView_(self.gridView)
+        self.storeSharedPalette()
         try:
             maxY = max(0, contentHeight - visibleHeight)
             restoreY = min(max(0, previousOrigin.y), maxY)
@@ -992,6 +1395,9 @@ class PartBrush(SelectTool):
     @objc.python_method
     def __del__(self):
         try:
-            Glyphs.removeCallback(self.updateGridIfNeeded)
+            if PartBrush._callbackOwner is self:
+                Glyphs.removeCallback(self.updateGridIfNeeded)
+                PartBrush._callbacksRegistered = False
+                PartBrush._callbackOwner = None
         except Exception:
             pass
